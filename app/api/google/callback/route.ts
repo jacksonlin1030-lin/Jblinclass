@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { readConfig } from "@/lib/config";
 import { exchangeCodeForTokens } from "@/lib/google";
 
 export async function GET(req: NextRequest) {
@@ -14,8 +13,7 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const config = readConfig();
-    await exchangeCodeForTokens(config, code);
+    await exchangeCodeForTokens(code);
     return NextResponse.redirect(new URL(`/settings?google_connected=1`, req.url));
   } catch (err: any) {
     return NextResponse.redirect(

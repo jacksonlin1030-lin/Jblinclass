@@ -1,16 +1,17 @@
-import { ClassRecord, Purchase, Student, StudentMetrics } from "./types";
+import { MatchedSession, Purchase, Student, StudentMetrics } from "./types";
 
 /**
- * Computes the per-student dashboard row. "Active package" is the first
- * (oldest) purchase that still has sessions remaining — matching the FIFO
- * allocation used during sync. If every package is full, the most recent
- * package is treated as active (mirrors lib/sync.ts's overQuota fallback).
+ * Computes the per-student dashboard row. Sessions (merged across all stored
+ * months) are FIFO-assigned to purchases in chronological order: each class
+ * fills the oldest package that still has room. "Active package" is the
+ * first one not yet full; if every package is full, the most recent one is
+ * treated as active and `sessionsRemaining` goes negative — that negative
+ * number *is* the over-quota signal, surfaced directly in the dashboard.
  */
 export function computeStudentMetrics(
   students: Student[],
   purchases: Purchase[],
-  classRecords: ClassRecord[],
-  manualOverrides: Map<string, number | null>,
+  allSessions: MatchedSession[],
   lowSessionThreshold: number
 ): StudentMetrics[] {
   const purchasesByStudent = new Map<string, Purchase[]>();
@@ -19,31 +20,30 @@ export function computeStudentMetrics(
     list.push(p);
     purchasesByStudent.set(p.studentId, list);
   }
-  // Ensure oldest-first ordering per student (purchases arrive pre-sorted, but be defensive).
-  Array.from(purchasesByStudent.values()).forEach((list) => {
-    list.sort((a, b) => (a.purchaseDate < b.purchaseDate ? -1 : 1));
-  });
+  Array.from(purchasesByStudent.values()).forEach((list) =>
+    list.sort((a, b) => (a.purchaseDate < b.purchaseDate ? -1 : 1))
+  );
 
-  const autoUsedByPurchase = new Map<string, number>();
-  for (const r of classRecords) {
-    if (!r.purchaseId) continue;
-    autoUsedByPurchase.set(r.purchaseId, (autoUsedByPurchase.get(r.purchaseId) ?? 0) + 1);
+  const sessionsByStudent = new Map<string, MatchedSession[]>();
+  for (const s of allSessions) {
+    const list = sessionsByStudent.get(s.studentId) ?? [];
+    list.push(s);
+    sessionsByStudent.set(s.studentId, list);
   }
-
-  const lastClassDateByStudent = new Map<string, string>();
-  for (const r of classRecords) {
-    const current = lastClassDateByStudent.get(r.studentId);
-    if (!current || r.date > current) {
-      lastClassDateByStudent.set(r.studentId, r.date);
-    }
-  }
+  Array.from(sessionsByStudent.values()).forEach((list) =>
+    list.sort((a, b) => (a.date < b.date ? -1 : 1))
+  );
 
   return students.map((student) => {
     const studentPurchases = purchasesByStudent.get(student.id) ?? [];
+    const studentSessions = sessionsByStudent.get(student.id) ?? [];
 
     const totalUnpaidAmount = studentPurchases
       .filter((p) => !p.paid)
       .reduce((sum, p) => sum + p.sessionsPurchased * p.pricePerSession, 0);
+
+    const lastClassDate =
+      studentSessions.length > 0 ? studentSessions[studentSessions.length - 1].date : null;
 
     if (studentPurchases.length === 0) {
       return {
@@ -57,27 +57,35 @@ export function computeStudentMetrics(
         sessionsRemaining: 0,
         amountDue: 0,
         totalUnpaidAmount: 0,
-        lastClassDate: lastClassDateByStudent.get(student.id) ?? null,
+        lastClassDate,
         lowSessionsWarning: false,
       };
     }
 
-    // Find first non-full package (FIFO), else fall back to the most recent one.
+    // FIFO-assign each session (chronological) to the first purchase with room;
+    // once every purchase is full, extra sessions pile onto the last one.
+    const assignedCounts = new Map<string, number>();
+    for (const p of studentPurchases) assignedCounts.set(p.id, 0);
+    for (let i = 0; i < studentSessions.length; i++) {
+      const target =
+        studentPurchases.find((p) => (assignedCounts.get(p.id) ?? 0) < p.sessionsPurchased) ??
+        studentPurchases[studentPurchases.length - 1];
+      assignedCounts.set(target.id, (assignedCounts.get(target.id) ?? 0) + 1);
+    }
+
     let active = studentPurchases[studentPurchases.length - 1];
     for (const p of studentPurchases) {
-      const auto = autoUsedByPurchase.get(p.id) ?? 0;
-      const used = manualOverrides.get(p.id) ?? auto;
-      if (used < p.sessionsPurchased) {
+      if ((assignedCounts.get(p.id) ?? 0) < p.sessionsPurchased) {
         active = p;
         break;
       }
     }
 
-    const autoUsed = autoUsedByPurchase.get(active.id) ?? 0;
-    const manualOverride = manualOverrides.get(active.id) ?? null;
+    const autoUsed = assignedCounts.get(active.id) ?? 0;
+    const manualOverride = active.sessionsUsedManualOverride;
     const effectiveUsed = manualOverride ?? autoUsed;
-    const remaining = Math.max(active.sessionsPurchased - effectiveUsed, 0);
-    const amountDue = active.paid ? 0 : remaining * active.pricePerSession;
+    const remaining = active.sessionsPurchased - effectiveUsed; // can go negative: over-quota signal
+    const amountDue = active.paid ? 0 : Math.max(remaining, 0) * active.pricePerSession;
 
     return {
       studentId: student.id,
@@ -90,7 +98,7 @@ export function computeStudentMetrics(
       sessionsRemaining: remaining,
       amountDue,
       totalUnpaidAmount,
-      lastClassDate: lastClassDateByStudent.get(student.id) ?? null,
+      lastClassDate,
       lowSessionsWarning: remaining <= lowSessionThreshold,
     };
   });

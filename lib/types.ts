@@ -8,72 +8,33 @@ export interface GoogleTokens {
   expiry_date?: number | null;
 }
 
-export interface AppConfig {
-  notion: {
-    token: string;
-    studentsDbId: string;
-    purchasesDbId: string;
-    classRecordsDbId: string;
-  };
-  google: {
-    clientId: string;
-    clientSecret: string;
-    redirectUri: string;
-    tokens?: GoogleTokens;
-  };
-  settings: {
-    /** Remaining-session threshold at/below which a student is flagged for renewal. */
-    lowSessionThreshold: number;
-    /** Which Google Calendar to read events from. */
-    calendarId: string;
-  };
-}
-
-export const DEFAULT_CONFIG: AppConfig = {
-  notion: {
-    token: "",
-    studentsDbId: "",
-    purchasesDbId: "",
-    classRecordsDbId: "",
-  },
-  google: {
-    clientId: "",
-    clientSecret: "",
-    redirectUri: "http://localhost:3000/api/google/callback",
-  },
-  settings: {
-    lowSessionThreshold: 2,
-    calendarId: "primary",
-  },
-};
-
-/** A student row from the Students Notion database. */
+/** A student the coach trains. */
 export interface Student {
   id: string;
   name: string;
   active: boolean;
 }
 
-/** A course-package purchase row from the Purchases Notion database. */
+/** A course-package purchase (one row per package bought, FIFO-consumed). */
 export interface Purchase {
   id: string;
   studentId: string;
-  studentName: string;
   purchaseDate: string; // ISO date
   sessionsPurchased: number;
   pricePerSession: number;
   paid: boolean;
   paidDate: string | null;
   note: string;
+  /** Manual override for sessions used, in case calendar matching missed an
+   *  exception (e.g. a class that happened but its calendar event was deleted). */
+  sessionsUsedManualOverride: number | null;
 }
 
-/** A class-record row from the ClassRecords Notion database. */
-export interface ClassRecord {
-  id: string;
+/** One Google Calendar event matched to a student. */
+export interface MatchedSession {
   studentId: string;
   date: string; // ISO date
-  purchaseId: string | null;
-  googleEventId: string;
+  eventId: string;
   eventTitle: string;
 }
 
@@ -90,6 +51,40 @@ export interface UnmatchedEvent {
   title: string;
   date: string;
 }
+
+/** Every night (and on manual sync) the whole current month is recomputed from
+ *  scratch and this snapshot is overwritten — self-healing if calendar events
+ *  changed since the last run. Past months are never touched again once the
+ *  month rolls over, which is what keeps their data around as history. */
+export interface MonthSnapshot {
+  monthKey: string; // YYYY-MM
+  sessions: MatchedSession[];
+  syncedAt: string; // ISO datetime
+}
+
+export interface SyncRunSummary {
+  monthKey: string;
+  runAt: string; // ISO datetime
+  triggeredBy: "manual" | "cron";
+  sessionCount: number;
+  unmatchedEvents: UnmatchedEvent[];
+  multiMatchWarnings: { eventTitle: string; date: string; studentNames: string[] }[];
+  error?: string;
+}
+
+export interface AppSettings {
+  /** Remaining-session threshold at/below which a student is flagged for renewal. */
+  lowSessionThreshold: number;
+  /** Which Google Calendar to read events from. */
+  calendarId: string;
+}
+
+export const DEFAULT_SETTINGS: AppSettings = {
+  lowSessionThreshold: 2,
+  calendarId: "primary",
+};
+
+export const DEFAULT_SESSIONS_PER_PACKAGE = 10;
 
 /** Per-student computed metrics for the dashboard table. */
 export interface StudentMetrics {

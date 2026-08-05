@@ -4,7 +4,7 @@ import NavBar from "@/components/NavBar";
 
 export const metadata: Metadata = {
   title: "健身教練課程追蹤",
-  description: "課程堂數與收款追蹤 — 串接 Notion 與 Google 日曆",
+  description: "課程堂數與收款追蹤 — 自動同步 Google 日曆",
 };
 
 export default function RootLayout({

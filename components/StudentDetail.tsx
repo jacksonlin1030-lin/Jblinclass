@@ -13,11 +13,10 @@ interface Purchase {
   note: string;
 }
 
-interface ClassRecord {
-  id: string;
+interface Session {
+  studentId: string;
   date: string;
   eventTitle: string;
-  purchaseId: string | null;
 }
 
 export default function StudentDetail({
@@ -28,7 +27,7 @@ export default function StudentDetail({
   onChanged: () => void;
 }) {
   const [purchases, setPurchases] = useState<Purchase[] | null>(null);
-  const [records, setRecords] = useState<ClassRecord[] | null>(null);
+  const [sessions, setSessions] = useState<Session[] | null>(null);
   const [showNewForm, setShowNewForm] = useState(false);
   const [newPurchase, setNewPurchase] = useState({
     purchaseDate: new Date().toISOString().slice(0, 10),
@@ -39,12 +38,12 @@ export default function StudentDetail({
   const [busy, setBusy] = useState(false);
 
   async function load() {
-    const [pRes, rRes] = await Promise.all([
-      fetch(`/api/notion/purchases?studentId=${studentId}`),
-      fetch(`/api/notion/classrecords?studentId=${studentId}`),
+    const [pRes, sRes] = await Promise.all([
+      fetch(`/api/purchases?studentId=${studentId}`),
+      fetch(`/api/sessions?studentId=${studentId}`),
     ]);
     setPurchases((await pRes.json()).purchases);
-    setRecords((await rRes.json()).records);
+    setSessions((await sRes.json()).sessions);
   }
 
   useEffect(() => {
@@ -54,7 +53,7 @@ export default function StudentDetail({
 
   async function togglePaid(purchase: Purchase) {
     setBusy(true);
-    await fetch(`/api/notion/purchases/${purchase.id}`, {
+    await fetch(`/api/purchases/${purchase.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -69,7 +68,7 @@ export default function StudentDetail({
 
   async function submitNewPurchase() {
     setBusy(true);
-    await fetch(`/api/notion/purchases`, {
+    await fetch(`/api/purchases`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ studentId, ...newPurchase }),
@@ -80,7 +79,7 @@ export default function StudentDetail({
     setBusy(false);
   }
 
-  if (!purchases || !records) {
+  if (!purchases || !sessions) {
     return <p className="text-sm text-slate-500 py-3">載入中…</p>;
   }
 
@@ -151,55 +150,57 @@ export default function StudentDetail({
         {purchases.length === 0 ? (
           <p className="text-slate-500">尚無購買紀錄</p>
         ) : (
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="text-left text-slate-500 border-b border-slate-200">
-                <th className="py-1 pr-3">購買日期</th>
-                <th className="py-1 pr-3">堂數</th>
-                <th className="py-1 pr-3">單堂課費</th>
-                <th className="py-1 pr-3">收款狀態</th>
-                <th className="py-1"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {purchases.map((p) => (
-                <tr key={p.id} className="border-b border-slate-100">
-                  <td className="py-1.5 pr-3">{p.purchaseDate}</td>
-                  <td className="py-1.5 pr-3">{p.sessionsPurchased}</td>
-                  <td className="py-1.5 pr-3">{p.pricePerSession.toLocaleString()}</td>
-                  <td className="py-1.5 pr-3">
-                    {p.paid ? (
-                      <span className="text-green-700">已收款{p.paidDate ? `（${p.paidDate}）` : ""}</span>
-                    ) : (
-                      <span className="text-amber-700">未收款</span>
-                    )}
-                  </td>
-                  <td className="py-1.5">
-                    <button
-                      onClick={() => togglePaid(p)}
-                      disabled={busy}
-                      className="text-xs underline text-blue-700 disabled:opacity-50"
-                    >
-                      標記為{p.paid ? "未收款" : "已收款"}
-                    </button>
-                  </td>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs min-w-[420px]">
+              <thead>
+                <tr className="text-left text-slate-500 border-b border-slate-200">
+                  <th className="py-1 pr-3">購買日期</th>
+                  <th className="py-1 pr-3">堂數</th>
+                  <th className="py-1 pr-3">單堂課費</th>
+                  <th className="py-1 pr-3">收款狀態</th>
+                  <th className="py-1"></th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {purchases.map((p) => (
+                  <tr key={p.id} className="border-b border-slate-100">
+                    <td className="py-1.5 pr-3">{p.purchaseDate}</td>
+                    <td className="py-1.5 pr-3">{p.sessionsPurchased}</td>
+                    <td className="py-1.5 pr-3">{p.pricePerSession.toLocaleString()}</td>
+                    <td className="py-1.5 pr-3">
+                      {p.paid ? (
+                        <span className="text-green-700">已收款{p.paidDate ? `（${p.paidDate}）` : ""}</span>
+                      ) : (
+                        <span className="text-amber-700">未收款</span>
+                      )}
+                    </td>
+                    <td className="py-1.5">
+                      <button
+                        onClick={() => togglePaid(p)}
+                        disabled={busy}
+                        className="text-xs underline text-blue-700 disabled:opacity-50"
+                      >
+                        標記為{p.paid ? "未收款" : "已收款"}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
 
       <div>
-        <h4 className="font-semibold mb-2">上課紀錄（最近優先）</h4>
-        {records.length === 0 ? (
+        <h4 className="font-semibold mb-2">上課紀錄（最近優先，來自日曆同步）</h4>
+        {sessions.length === 0 ? (
           <p className="text-slate-500">尚無上課紀錄</p>
         ) : (
           <ul className="space-y-1 max-h-56 overflow-y-auto">
-            {records.map((r) => (
-              <li key={r.id} className="flex justify-between border-b border-slate-100 py-1">
-                <span>{r.date}</span>
-                <span className="text-slate-500 truncate max-w-xs">{r.eventTitle}</span>
+            {sessions.map((s, i) => (
+              <li key={i} className="flex justify-between border-b border-slate-100 py-1 gap-3">
+                <span className="shrink-0">{s.date}</span>
+                <span className="text-slate-500 truncate">{s.eventTitle}</span>
               </li>
             ))}
           </ul>

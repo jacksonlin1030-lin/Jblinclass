@@ -28,8 +28,9 @@ yarn-error.log*
 # local env files
 .env*.local
 
-# local secrets / tokens (Notion, Google OAuth) - never commit
+# local secrets / tokens / data - never commit
 /data/config.local.json
+/data/store.local.json
 
 # vercel
 .vercel

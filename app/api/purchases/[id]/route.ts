@@ -1,20 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
-import { readConfig } from "@/lib/config";
-import { updatePurchasePayment, updatePurchaseManualOverride } from "@/lib/notion";
+import { updatePurchase } from "@/lib/store";
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const config = readConfig();
     const body = await req.json();
-
+    const patch: { paid?: boolean; paidDate?: string | null; sessionsUsedManualOverride?: number | null } = {};
     if (typeof body.paid === "boolean") {
-      await updatePurchasePayment(config, params.id, body.paid, body.paidDate ?? null);
+      patch.paid = body.paid;
+      patch.paidDate = body.paidDate ?? null;
     }
     if ("sessionsUsedManualOverride" in body) {
-      const value = body.sessionsUsedManualOverride;
-      await updatePurchaseManualOverride(config, params.id, value === null ? null : Number(value));
+      patch.sessionsUsedManualOverride =
+        body.sessionsUsedManualOverride === null ? null : Number(body.sessionsUsedManualOverride);
     }
-
+    await updatePurchase(params.id, patch);
     return NextResponse.json({ ok: true });
   } catch (err: any) {
     return NextResponse.json({ error: err.message ?? "更新課程包失敗" }, { status: 500 });

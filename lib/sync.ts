@@ -1,119 +1,65 @@
-import { AppConfig, Purchase, UnmatchedEvent } from "./types";
+import { MonthSnapshot, SyncRunSummary } from "./types";
 import { listCalendarEvents } from "./google";
-import {
-  listStudents,
-  listPurchases,
-  listClassRecords,
-  createClassRecord,
-} from "./notion";
+import { getStudents, getSettings, saveMonthSnapshot, saveLastRun } from "./store";
 import { matchEventsToStudents } from "./matching";
-
-export interface SyncResult {
-  createdCount: number;
-  skippedExistingCount: number;
-  unmatchedEvents: UnmatchedEvent[];
-  multiMatchWarnings: { eventTitle: string; date: string; studentNames: string[] }[];
-  overQuotaWarnings: { studentName: string; eventTitle: string; date: string }[];
-}
+import { currentTaipeiMonthRange } from "./timezone";
 
 /**
- * Picks which purchase (course package) a new class should count against, using
- * FIFO by purchase date: the first package that isn't full yet. If every
- * package for the student is already full, the class is assigned to the most
- * recent package and flagged as over-quota so the coach can review it.
+ * Recomputes the current month from scratch every time it runs (nightly via
+ * cron, or manually from the dashboard): fetch this month's calendar events,
+ * match them to students, and overwrite the month's stored snapshot. This is
+ * intentionally not incremental — it's simpler and self-healing (if a class
+ * was cancelled/moved on the calendar after a previous run, tonight's run
+ * corrects it automatically). Past months are never re-touched once the
+ * calendar month rolls over, which is what keeps their data around as history.
  */
-function allocatePurchase(
-  studentPurchases: Purchase[],
-  allocatedCounts: Map<string, number>
-): { purchaseId: string | null; overQuota: boolean } {
-  if (studentPurchases.length === 0) return { purchaseId: null, overQuota: true };
+export async function performSync(triggeredBy: "manual" | "cron"): Promise<SyncRunSummary> {
+  const { monthKey, startDate, endDate } = currentTaipeiMonthRange();
+  const runAt = new Date().toISOString();
 
-  for (const purchase of studentPurchases) {
-    const used = allocatedCounts.get(purchase.id) ?? 0;
-    if (used < purchase.sessionsPurchased) {
-      return { purchaseId: purchase.id, overQuota: false };
-    }
+  try {
+    const [students, settings] = await Promise.all([getStudents(), getSettings()]);
+    const activeStudents = students; // match against all students, active flag only affects dashboard display
+    const events = await listCalendarEvents(startDate, endDate, settings.calendarId);
+    const { matches, unmatched, multiMatch } = matchEventsToStudents(events, activeStudents);
+
+    const snapshot: MonthSnapshot = {
+      monthKey,
+      sessions: matches.map((m) => ({
+        studentId: m.student.id,
+        date: m.event.date,
+        eventId: m.event.id,
+        eventTitle: m.event.title,
+      })),
+      syncedAt: runAt,
+    };
+    await saveMonthSnapshot(snapshot);
+
+    const summary: SyncRunSummary = {
+      monthKey,
+      runAt,
+      triggeredBy,
+      sessionCount: snapshot.sessions.length,
+      unmatchedEvents: unmatched,
+      multiMatchWarnings: multiMatch.map((m) => ({
+        eventTitle: m.event.title,
+        date: m.event.date,
+        studentNames: m.students.map((s) => s.name),
+      })),
+    };
+    await saveLastRun(summary);
+    return summary;
+  } catch (err: any) {
+    const summary: SyncRunSummary = {
+      monthKey,
+      runAt,
+      triggeredBy,
+      sessionCount: 0,
+      unmatchedEvents: [],
+      multiMatchWarnings: [],
+      error: err.message ?? "同步失敗",
+    };
+    await saveLastRun(summary);
+    throw err;
   }
-  // All packages full — assign to the latest one and flag it.
-  const latest = studentPurchases[studentPurchases.length - 1];
-  return { purchaseId: latest.id, overQuota: true };
-}
-
-export async function performSync(
-  config: AppConfig,
-  startDate: string,
-  endDate: string
-): Promise<SyncResult> {
-  const [students, events] = await Promise.all([
-    listStudents(config),
-    listCalendarEvents(config, startDate, endDate),
-  ]);
-  const purchases = await listPurchases(config, students);
-  const existingRecords = await listClassRecords(config);
-
-  const { matches, unmatched, multiMatch } = matchEventsToStudents(events, students);
-
-  // Existing (studentId, googleEventId) pairs already written to Notion, for dedup.
-  const existingPairs = new Set(existingRecords.map((r) => `${r.studentId}::${r.googleEventId}`));
-
-  // Seed allocation counts from existing class records (already-assigned purchases).
-  const allocatedCounts = new Map<string, number>();
-  for (const record of existingRecords) {
-    if (!record.purchaseId) continue;
-    allocatedCounts.set(record.purchaseId, (allocatedCounts.get(record.purchaseId) ?? 0) + 1);
-  }
-
-  const purchasesByStudent = new Map<string, Purchase[]>();
-  for (const purchase of purchases) {
-    const list = purchasesByStudent.get(purchase.studentId) ?? [];
-    list.push(purchase);
-    purchasesByStudent.set(purchase.studentId, list);
-  }
-  // purchases already sorted oldest-first by listPurchases()
-
-  let createdCount = 0;
-  let skippedExistingCount = 0;
-  const overQuotaWarnings: SyncResult["overQuotaWarnings"] = [];
-
-  // Sort matches by date so FIFO allocation happens in chronological order within this run.
-  const sortedMatches = [...matches].sort((a, b) => (a.event.date < b.event.date ? -1 : 1));
-
-  for (const { event, student } of sortedMatches) {
-    const pairKey = `${student.id}::${event.id}`;
-    if (existingPairs.has(pairKey)) {
-      skippedExistingCount++;
-      continue;
-    }
-
-    const studentPurchases = purchasesByStudent.get(student.id) ?? [];
-    const { purchaseId, overQuota } = allocatePurchase(studentPurchases, allocatedCounts);
-    if (purchaseId) {
-      allocatedCounts.set(purchaseId, (allocatedCounts.get(purchaseId) ?? 0) + 1);
-    }
-    if (overQuota) {
-      overQuotaWarnings.push({ studentName: student.name, eventTitle: event.title, date: event.date });
-    }
-
-    await createClassRecord(config, {
-      studentId: student.id,
-      date: event.date,
-      purchaseId,
-      googleEventId: event.id,
-      eventTitle: event.title,
-    });
-    existingPairs.add(pairKey);
-    createdCount++;
-  }
-
-  return {
-    createdCount,
-    skippedExistingCount,
-    unmatchedEvents: unmatched,
-    multiMatchWarnings: multiMatch.map((m) => ({
-      eventTitle: m.event.title,
-      date: m.event.date,
-      studentNames: m.students.map((s) => s.name),
-    })),
-    overQuotaWarnings,
-  };
 }
