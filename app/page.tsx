@@ -41,8 +41,11 @@ interface MonthlyProjection {
   netIncome: number;
 }
 
-function fmt(n: number) {
-  return n.toLocaleString();
+// Defensive: falls back to 0 instead of throwing if the API ever returns a
+// shape the currently-loaded client bundle doesn't expect (e.g. a browser
+// tab left open across a deploy that renamed a field).
+function fmt(n: number | null | undefined) {
+  return (typeof n === "number" && !Number.isNaN(n) ? n : 0).toLocaleString();
 }
 
 function fmtTime(iso: string) {
