@@ -14,14 +14,35 @@ function toDateStr(d: Date): string {
   return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
 }
 
-/** Returns the current Asia/Taipei month (as "YYYY-MM") and the date range
- *  from the 1st of that month through today, both in Asia/Taipei local time. */
-export function currentTaipeiMonthRange(): { monthKey: string; startDate: string; endDate: string } {
+/** Today's date (Asia/Taipei), as "YYYY-MM-DD". */
+export function todayTaipei(): string {
+  return toDateStr(taipeiNow());
+}
+
+/** The current Asia/Taipei month, as "YYYY-MM". */
+export function currentTaipeiMonthKey(): string {
+  const now = taipeiNow();
+  return `${now.getUTCFullYear()}-${pad(now.getUTCMonth() + 1)}`;
+}
+
+/**
+ * Returns the current Asia/Taipei month's full date range (1st through the
+ * last day of the month, regardless of today), plus today's date for
+ * distinguishing already-happened classes from ones merely booked on the
+ * calendar for later this month.
+ */
+export function currentTaipeiMonthBounds(): {
+  monthKey: string;
+  startDate: string;
+  endDate: string;
+  today: string;
+} {
   const now = taipeiNow();
   const year = now.getUTCFullYear();
   const month = now.getUTCMonth(); // 0-indexed
   const monthKey = `${year}-${pad(month + 1)}`;
   const startDate = `${year}-${pad(month + 1)}-01`;
-  const endDate = toDateStr(now);
-  return { monthKey, startDate, endDate };
+  const lastDay = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+  const endDate = `${year}-${pad(month + 1)}-${pad(lastDay)}`;
+  return { monthKey, startDate, endDate, today: toDateStr(now) };
 }

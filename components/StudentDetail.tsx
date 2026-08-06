@@ -11,12 +11,20 @@ interface Purchase {
   paid: boolean;
   paidDate: string | null;
   note: string;
+  sessionsUsedManualOverride: number | null;
 }
 
 interface Session {
   studentId: string;
   date: string;
   eventTitle: string;
+}
+
+interface EditForm {
+  purchaseDate: string;
+  sessionsPurchased: string;
+  pricePerSession: string;
+  sessionsUsedManualOverride: string; // empty string = null (auto)
 }
 
 export default function StudentDetail({
@@ -36,6 +44,8 @@ export default function StudentDetail({
     paid: false,
   });
   const [busy, setBusy] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState<EditForm | null>(null);
 
   async function load() {
     const [pRes, sRes] = await Promise.all([
@@ -74,6 +84,38 @@ export default function StudentDetail({
       body: JSON.stringify({ studentId, ...newPurchase }),
     });
     setShowNewForm(false);
+    await load();
+    onChanged();
+    setBusy(false);
+  }
+
+  function startEdit(p: Purchase) {
+    setEditingId(p.id);
+    setEditForm({
+      purchaseDate: p.purchaseDate,
+      sessionsPurchased: String(p.sessionsPurchased),
+      pricePerSession: String(p.pricePerSession),
+      sessionsUsedManualOverride:
+        p.sessionsUsedManualOverride === null ? "" : String(p.sessionsUsedManualOverride),
+    });
+  }
+
+  async function saveEdit(id: string) {
+    if (!editForm) return;
+    setBusy(true);
+    await fetch(`/api/purchases/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        purchaseDate: editForm.purchaseDate,
+        sessionsPurchased: Number(editForm.sessionsPurchased),
+        pricePerSession: Number(editForm.pricePerSession),
+        sessionsUsedManualOverride:
+          editForm.sessionsUsedManualOverride === "" ? null : Number(editForm.sessionsUsedManualOverride),
+      }),
+    });
+    setEditingId(null);
+    setEditForm(null);
     await load();
     onChanged();
     setBusy(false);
@@ -151,40 +193,116 @@ export default function StudentDetail({
           <p className="text-slate-500">尚無購買紀錄</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-xs min-w-[420px]">
+            <table className="w-full text-xs min-w-[560px]">
               <thead>
                 <tr className="text-left text-slate-500 border-b border-slate-200">
                   <th className="py-1 pr-3">購買日期</th>
                   <th className="py-1 pr-3">堂數</th>
                   <th className="py-1 pr-3">單堂課費</th>
+                  <th className="py-1 pr-3">已用堂數覆蓋</th>
                   <th className="py-1 pr-3">收款狀態</th>
                   <th className="py-1"></th>
                 </tr>
               </thead>
               <tbody>
-                {purchases.map((p) => (
-                  <tr key={p.id} className="border-b border-slate-100">
-                    <td className="py-1.5 pr-3">{p.purchaseDate}</td>
-                    <td className="py-1.5 pr-3">{p.sessionsPurchased}</td>
-                    <td className="py-1.5 pr-3">{p.pricePerSession.toLocaleString()}</td>
-                    <td className="py-1.5 pr-3">
-                      {p.paid ? (
-                        <span className="text-green-700">已收款{p.paidDate ? `（${p.paidDate}）` : ""}</span>
-                      ) : (
-                        <span className="text-amber-700">未收款</span>
-                      )}
-                    </td>
-                    <td className="py-1.5">
-                      <button
-                        onClick={() => togglePaid(p)}
-                        disabled={busy}
-                        className="text-xs underline text-blue-700 disabled:opacity-50"
-                      >
-                        標記為{p.paid ? "未收款" : "已收款"}
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                {purchases.map((p) =>
+                  editingId === p.id && editForm ? (
+                    <tr key={p.id} className="border-b border-slate-100 bg-white">
+                      <td className="py-1.5 pr-3">
+                        <input
+                          type="date"
+                          value={editForm.purchaseDate}
+                          onChange={(e) => setEditForm({ ...editForm, purchaseDate: e.target.value })}
+                          className="w-32 rounded border border-slate-300 px-1.5 py-0.5"
+                        />
+                      </td>
+                      <td className="py-1.5 pr-3">
+                        <input
+                          type="number"
+                          value={editForm.sessionsPurchased}
+                          onChange={(e) => setEditForm({ ...editForm, sessionsPurchased: e.target.value })}
+                          className="w-14 rounded border border-slate-300 px-1.5 py-0.5"
+                        />
+                      </td>
+                      <td className="py-1.5 pr-3">
+                        <input
+                          type="number"
+                          value={editForm.pricePerSession}
+                          onChange={(e) => setEditForm({ ...editForm, pricePerSession: e.target.value })}
+                          className="w-16 rounded border border-slate-300 px-1.5 py-0.5"
+                        />
+                      </td>
+                      <td className="py-1.5 pr-3">
+                        <input
+                          type="number"
+                          placeholder="自動"
+                          value={editForm.sessionsUsedManualOverride}
+                          onChange={(e) =>
+                            setEditForm({ ...editForm, sessionsUsedManualOverride: e.target.value })
+                          }
+                          className="w-14 rounded border border-slate-300 px-1.5 py-0.5"
+                        />
+                      </td>
+                      <td className="py-1.5 pr-3 text-slate-400">
+                        {p.paid ? "已收款" : "未收款"}
+                      </td>
+                      <td className="py-1.5 space-x-2 whitespace-nowrap">
+                        <button
+                          onClick={() => saveEdit(p.id)}
+                          disabled={busy}
+                          className="text-xs rounded bg-slate-900 text-white px-2 py-1 disabled:opacity-50"
+                        >
+                          存
+                        </button>
+                        <button
+                          onClick={() => {
+                            setEditingId(null);
+                            setEditForm(null);
+                          }}
+                          className="text-xs text-slate-400"
+                        >
+                          取消
+                        </button>
+                      </td>
+                    </tr>
+                  ) : (
+                    <tr key={p.id} className="border-b border-slate-100">
+                      <td className="py-1.5 pr-3">{p.purchaseDate}</td>
+                      <td className="py-1.5 pr-3">{p.sessionsPurchased}</td>
+                      <td className="py-1.5 pr-3">{p.pricePerSession.toLocaleString()}</td>
+                      <td className="py-1.5 pr-3">
+                        {p.sessionsUsedManualOverride === null ? (
+                          <span className="text-slate-400">自動</span>
+                        ) : (
+                          p.sessionsUsedManualOverride
+                        )}
+                      </td>
+                      <td className="py-1.5 pr-3">
+                        {p.paid ? (
+                          <span className="text-green-700">已收款{p.paidDate ? `（${p.paidDate}）` : ""}</span>
+                        ) : (
+                          <span className="text-amber-700">未收款</span>
+                        )}
+                      </td>
+                      <td className="py-1.5 space-x-2 whitespace-nowrap">
+                        <button
+                          onClick={() => startEdit(p)}
+                          disabled={busy}
+                          className="text-xs underline text-slate-600 disabled:opacity-50"
+                        >
+                          編輯
+                        </button>
+                        <button
+                          onClick={() => togglePaid(p)}
+                          disabled={busy}
+                          className="text-xs underline text-blue-700 disabled:opacity-50"
+                        >
+                          標記為{p.paid ? "未收款" : "已收款"}
+                        </button>
+                      </td>
+                    </tr>
+                  )
+                )}
               </tbody>
             </table>
           </div>

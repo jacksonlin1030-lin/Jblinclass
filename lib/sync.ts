@@ -1,27 +1,39 @@
 import { MonthSnapshot, SyncRunSummary } from "./types";
 import { listCalendarEvents } from "./google";
-import { getStudents, getSettings, saveMonthSnapshot, saveLastRun } from "./store";
+import { getStudents, getSettings, getMonthSnapshot, saveMonthSnapshot, saveLastRun } from "./store";
 import { matchEventsToStudents } from "./matching";
-import { currentTaipeiMonthRange } from "./timezone";
+import { currentTaipeiMonthBounds } from "./timezone";
 
 /**
  * Recomputes the current month from scratch every time it runs (nightly via
- * cron, or manually from the dashboard): fetch this month's calendar events,
- * match them to students, and overwrite the month's stored snapshot. This is
- * intentionally not incremental — it's simpler and self-healing (if a class
- * was cancelled/moved on the calendar after a previous run, tonight's run
- * corrects it automatically). Past months are never re-touched once the
- * calendar month rolls over, which is what keeps their data around as history.
+ * cron, or manually from the dashboard): fetch the WHOLE month's calendar
+ * events — 1st through the last day, including days later this month that
+ * haven't happened yet — match them to students, and overwrite the month's
+ * stored snapshot. This is intentionally not incremental — it's simpler and
+ * self-healing (if a class was cancelled/moved on the calendar after a
+ * previous run, tonight's run corrects it automatically). Past months are
+ * never re-touched once the calendar month rolls over, which is what keeps
+ * their data around as history.
+ *
+ * Fetching the full month (not just up to today) lets the dashboard show a
+ * whole-month projection including classes already booked for later this
+ * month. That projection is entirely separate from a student's confirmed
+ * "已用堂數", which lib/metrics.ts derives by filtering to date <= today —
+ * a class that's merely booked on the calendar doesn't count as attended
+ * until the day actually happens.
  */
 export async function performSync(triggeredBy: "manual" | "cron"): Promise<SyncRunSummary> {
-  const { monthKey, startDate, endDate } = currentTaipeiMonthRange();
+  const { monthKey, startDate, endDate, today } = currentTaipeiMonthBounds();
   const runAt = new Date().toISOString();
 
   try {
-    const [students, settings] = await Promise.all([getStudents(), getSettings()]);
-    const activeStudents = students; // match against all students, active flag only affects dashboard display
+    const [students, settings, existingSnapshot] = await Promise.all([
+      getStudents(),
+      getSettings(),
+      getMonthSnapshot(monthKey),
+    ]);
     const events = await listCalendarEvents(startDate, endDate, settings.calendarId);
-    const { matches, unmatched, multiMatch } = matchEventsToStudents(events, activeStudents);
+    const { matches, unmatched, multiMatch } = matchEventsToStudents(events, students);
 
     const snapshot: MonthSnapshot = {
       monthKey,
@@ -32,14 +44,20 @@ export async function performSync(triggeredBy: "manual" | "cron"): Promise<SyncR
         eventTitle: m.event.title,
       })),
       syncedAt: runAt,
+      // Preserve any venue-fee override already set for this month — a sync
+      // run shouldn't reset it back to the default.
+      venueFeeOverride: existingSnapshot?.venueFeeOverride ?? null,
     };
     await saveMonthSnapshot(snapshot);
+
+    const confirmedSessionCount = snapshot.sessions.filter((s) => s.date <= today).length;
 
     const summary: SyncRunSummary = {
       monthKey,
       runAt,
       triggeredBy,
       sessionCount: snapshot.sessions.length,
+      confirmedSessionCount,
       unmatchedEvents: unmatched,
       multiMatchWarnings: multiMatch.map((m) => ({
         eventTitle: m.event.title,
@@ -55,6 +73,7 @@ export async function performSync(triggeredBy: "manual" | "cron"): Promise<SyncR
       runAt,
       triggeredBy,
       sessionCount: 0,
+      confirmedSessionCount: 0,
       unmatchedEvents: [],
       multiMatchWarnings: [],
       error: err.message ?? "同步失敗",

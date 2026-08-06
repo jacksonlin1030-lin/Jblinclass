@@ -75,7 +75,12 @@ export async function addPurchase(data: {
 
 export async function updatePurchase(
   id: string,
-  patch: Partial<Pick<Purchase, "paid" | "paidDate" | "sessionsUsedManualOverride">>
+  patch: Partial<
+    Pick<
+      Purchase,
+      "paid" | "paidDate" | "sessionsUsedManualOverride" | "purchaseDate" | "sessionsPurchased" | "pricePerSession"
+    >
+  >
 ): Promise<void> {
   const purchases = (await kvGet<Purchase[]>(KEYS.purchases)) ?? [];
   const next = purchases.map((p) => (p.id === id ? { ...p, ...patch } : p));
@@ -90,6 +95,17 @@ export async function getMonthSnapshot(monthKey: string): Promise<MonthSnapshot 
 
 export async function saveMonthSnapshot(snapshot: MonthSnapshot): Promise<void> {
   await kvSet(KEYS.month(snapshot.monthKey), snapshot);
+}
+
+/** Sets (or clears, with `fee: null`) this month's venue-fee override. Creates
+ *  an empty snapshot if sync hasn't run for this month yet. */
+export async function updateMonthVenueFee(monthKey: string, fee: number | null): Promise<MonthSnapshot> {
+  const existing = await getMonthSnapshot(monthKey);
+  const next: MonthSnapshot = existing
+    ? { ...existing, venueFeeOverride: fee }
+    : { monthKey, sessions: [], syncedAt: new Date().toISOString(), venueFeeOverride: fee };
+  await saveMonthSnapshot(next);
+  return next;
 }
 
 /** All stored month snapshots, oldest first — used to compute FIFO metrics

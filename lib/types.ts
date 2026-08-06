@@ -55,21 +55,46 @@ export interface UnmatchedEvent {
 /** Every night (and on manual sync) the whole current month is recomputed from
  *  scratch and this snapshot is overwritten — self-healing if calendar events
  *  changed since the last run. Past months are never touched again once the
- *  month rolls over, which is what keeps their data around as history. */
+ *  month rolls over, which is what keeps their data around as history.
+ *  `sessions` covers the WHOLE month (1st through the last day), so for the
+ *  current month it includes classes already taught (date <= today) as well
+ *  as classes already booked on the calendar for later this month — the
+ *  latter are only ever used for the monthly projection, never for a
+ *  student's confirmed "已用堂數" (see lib/metrics.ts). */
 export interface MonthSnapshot {
   monthKey: string; // YYYY-MM
   sessions: MatchedSession[];
   syncedAt: string; // ISO datetime
+  /** This month's venue rental fee, overriding settings.defaultVenueRentalFee.
+   *  null means "use the default". */
+  venueFeeOverride: number | null;
 }
 
 export interface SyncRunSummary {
   monthKey: string;
   runAt: string; // ISO datetime
   triggeredBy: "manual" | "cron";
+  /** Total sessions matched for the whole month (confirmed + future-booked). */
   sessionCount: number;
+  /** Of sessionCount, how many have a date <= today (i.e. already happened). */
+  confirmedSessionCount: number;
   unmatchedEvents: UnmatchedEvent[];
   multiMatchWarnings: { eventTitle: string; date: string; studentNames: string[] }[];
   error?: string;
+}
+
+/** Whole-month estimate across all active students, including classes already
+ *  booked on the calendar for later this month. Revenue is attributed via the
+ *  same FIFO package logic as per-student metrics, just run over the full
+ *  month's sessions instead of stopping at today. */
+export interface MonthlyProjection {
+  monthKey: string;
+  sessionCount: number;
+  confirmedSessionCount: number;
+  estimatedRevenue: number;
+  venueFee: number;
+  venueFeeIsOverride: boolean;
+  netIncome: number;
 }
 
 export interface AppSettings {
@@ -77,11 +102,14 @@ export interface AppSettings {
   lowSessionThreshold: number;
   /** Which Google Calendar to read events from. */
   calendarId: string;
+  /** Default monthly venue rental fee, carried forward each month unless overridden. */
+  defaultVenueRentalFee: number;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
   lowSessionThreshold: 2,
   calendarId: "primary",
+  defaultVenueRentalFee: 0,
 };
 
 export const DEFAULT_SESSIONS_PER_PACKAGE = 10;

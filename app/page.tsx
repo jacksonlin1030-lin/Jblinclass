@@ -22,9 +22,20 @@ interface SyncRunSummary {
   runAt: string;
   triggeredBy: "manual" | "cron";
   sessionCount: number;
+  confirmedSessionCount: number;
   unmatchedEvents: { eventId: string; title: string; date: string }[];
   multiMatchWarnings: { eventTitle: string; date: string; studentNames: string[] }[];
   error?: string;
+}
+
+interface MonthlyProjection {
+  monthKey: string;
+  sessionCount: number;
+  confirmedSessionCount: number;
+  estimatedRevenue: number;
+  venueFee: number;
+  venueFeeIsOverride: boolean;
+  netIncome: number;
 }
 
 function fmt(n: number) {
@@ -38,10 +49,14 @@ function fmtTime(iso: string) {
 export default function DashboardPage() {
   const [students, setStudents] = useState<StudentMetrics[] | null>(null);
   const [lastRun, setLastRun] = useState<SyncRunSummary | null>(null);
+  const [projection, setProjection] = useState<MonthlyProjection | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [editingVenueFee, setEditingVenueFee] = useState(false);
+  const [venueFeeInput, setVenueFeeInput] = useState("0");
+  const [savingVenueFee, setSavingVenueFee] = useState(false);
 
   async function loadDashboard() {
     setLoading(true);
@@ -52,10 +67,30 @@ export default function DashboardPage() {
       if (!res.ok) throw new Error(data.error);
       setStudents(data.students);
       setLastRun(data.lastRun);
+      setProjection(data.projection);
+      if (data.projection) setVenueFeeInput(String(data.projection.venueFee));
     } catch (err: any) {
       setError(err.message ?? "讀取儀表板資料失敗，請確認 /settings 中的設定");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function saveVenueFee() {
+    setSavingVenueFee(true);
+    try {
+      const res = await fetch("/api/venue-fee", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fee: Number(venueFeeInput) }),
+      });
+      if (!res.ok) throw new Error((await res.json()).error);
+      setEditingVenueFee(false);
+      await loadDashboard();
+    } catch (err: any) {
+      setError(err.message ?? "更新場地租借費用失敗");
+    } finally {
+      setSavingVenueFee(false);
     }
   }
 
@@ -100,10 +135,79 @@ export default function DashboardPage() {
         <div className="rounded-md bg-red-50 text-red-800 px-4 py-2 text-sm border border-red-200">{error}</div>
       )}
 
+      {projection && (
+        <div className="bg-white rounded-lg border border-slate-200 p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="font-semibold text-sm text-slate-500">{projection.monthKey} 本月預估（含已排定未來課程）</h2>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div>
+              <div className="text-xs text-slate-500">預估課程數量</div>
+              <div className="text-lg font-semibold text-slate-900">
+                {projection.sessionCount}
+                <span className="text-xs font-normal text-slate-400"> 堂（已上 {projection.confirmedSessionCount}）</span>
+              </div>
+            </div>
+            <div>
+              <div className="text-xs text-slate-500">預估課程收入</div>
+              <div className="text-lg font-semibold text-slate-900">{fmt(projection.estimatedRevenue)}</div>
+            </div>
+            <div>
+              <div className="text-xs text-slate-500 flex items-center gap-1">
+                場地租借費用
+                {!editingVenueFee && (
+                  <button
+                    onClick={() => {
+                      setVenueFeeInput(String(projection.venueFee));
+                      setEditingVenueFee(true);
+                    }}
+                    className="text-blue-700 underline"
+                  >
+                    編輯
+                  </button>
+                )}
+              </div>
+              {editingVenueFee ? (
+                <div className="flex items-center gap-1 mt-0.5">
+                  <input
+                    type="number"
+                    value={venueFeeInput}
+                    onChange={(e) => setVenueFeeInput(e.target.value)}
+                    className="w-20 rounded border border-slate-300 px-1.5 py-0.5 text-sm"
+                  />
+                  <button
+                    onClick={saveVenueFee}
+                    disabled={savingVenueFee}
+                    className="text-xs rounded bg-slate-900 text-white px-2 py-1 disabled:opacity-50"
+                  >
+                    存
+                  </button>
+                  <button onClick={() => setEditingVenueFee(false)} className="text-xs text-slate-400">
+                    取消
+                  </button>
+                </div>
+              ) : (
+                <div className="text-lg font-semibold text-slate-900">
+                  {fmt(projection.venueFee)}
+                  {!projection.venueFeeIsOverride && <span className="text-xs font-normal text-slate-400"> (預設)</span>}
+                </div>
+              )}
+            </div>
+            <div>
+              <div className="text-xs text-slate-500">淨收入（扣場地費）</div>
+              <div className={`text-lg font-semibold ${projection.netIncome < 0 ? "text-red-700" : "text-green-700"}`}>
+                {fmt(projection.netIncome)}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {lastRun && (
         <div className="rounded-md bg-slate-100 text-slate-600 px-4 py-2 text-xs">
           {lastRun.monthKey} 月同步於 {fmtTime(lastRun.runAt)}（
-          {lastRun.triggeredBy === "cron" ? "自動排程" : "手動"}），共 {lastRun.sessionCount} 堂課
+          {lastRun.triggeredBy === "cron" ? "自動排程" : "手動"}），本月共 {lastRun.sessionCount} 堂課（已上{" "}
+          {lastRun.confirmedSessionCount} 堂）
           {lastRun.error && <span className="text-red-600 ml-2">上次執行失敗：{lastRun.error}</span>}
         </div>
       )}
