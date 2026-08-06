@@ -97,6 +97,7 @@ export async function listCalendarEvents(
         id: item.id,
         title: item.summary ?? "(無標題)",
         date: start.slice(0, 10), // YYYY-MM-DD
+        colorId: item.colorId ?? undefined,
       });
     }
     pageToken = res.data.nextPageToken ?? undefined;

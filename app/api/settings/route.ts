@@ -21,10 +21,16 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const patch: { lowSessionThreshold?: number; calendarId?: string; defaultVenueRentalFee?: number } = {};
+    const patch: {
+      lowSessionThreshold?: number;
+      calendarId?: string;
+      defaultVenueRentalFee?: number;
+      classEventColorId?: string;
+    } = {};
     if (typeof body.lowSessionThreshold === "number") patch.lowSessionThreshold = body.lowSessionThreshold;
     if (typeof body.calendarId === "string") patch.calendarId = body.calendarId;
     if (typeof body.defaultVenueRentalFee === "number") patch.defaultVenueRentalFee = body.defaultVenueRentalFee;
+    if (typeof body.classEventColorId === "string") patch.classEventColorId = body.classEventColorId;
     const settings = await saveSettings(patch);
     return NextResponse.json({ settings });
   } catch (err: any) {

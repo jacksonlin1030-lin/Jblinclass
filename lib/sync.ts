@@ -21,6 +21,13 @@ import { currentTaipeiMonthBounds } from "./timezone";
  * "已用堂數", which lib/metrics.ts derives by filtering to date <= today —
  * a class that's merely booked on the calendar doesn't count as attended
  * until the day actually happens.
+ *
+ * If settings.classEventColorId is set, events are first filtered down to
+ * only that color before name-matching runs — so a personal appointment
+ * that happens to mention a student's name in its title (or is on the same
+ * shared calendar) never gets counted as a class. Events in any other
+ * color are dropped silently here, before matching, so they also never
+ * show up as "unmatched" — they were never candidates to begin with.
  */
 export async function performSync(triggeredBy: "manual" | "cron"): Promise<SyncRunSummary> {
   const { monthKey, startDate, endDate, today } = currentTaipeiMonthBounds();
@@ -32,7 +39,10 @@ export async function performSync(triggeredBy: "manual" | "cron"): Promise<SyncR
       getSettings(),
       getMonthSnapshot(monthKey),
     ]);
-    const events = await listCalendarEvents(startDate, endDate, settings.calendarId);
+    const allEvents = await listCalendarEvents(startDate, endDate, settings.calendarId);
+    const events = settings.classEventColorId
+      ? allEvents.filter((e) => e.colorId === settings.classEventColorId)
+      : allEvents;
     const { matches, unmatched, multiMatch } = matchEventsToStudents(events, students);
 
     const snapshot: MonthSnapshot = {

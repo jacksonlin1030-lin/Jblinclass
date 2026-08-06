@@ -43,7 +43,26 @@ export interface CalendarEvent {
   id: string;
   title: string;
   date: string; // ISO date (start date)
+  /** Google's event color ID ("1"-"11"), if one was explicitly set on the
+   *  event. Undefined means the event uses the calendar's default color. */
+  colorId?: string;
 }
+
+/** Google Calendar's 11 standard event colors, for the "which color means
+ *  a class" picker in Settings. */
+export const GOOGLE_EVENT_COLORS: { id: string; name: string; hex: string }[] = [
+  { id: "1", name: "薰衣草色 Lavender", hex: "#7986cb" },
+  { id: "2", name: "鼠尾草色 Sage", hex: "#33b679" },
+  { id: "3", name: "葡萄色 Grape", hex: "#8e24aa" },
+  { id: "4", name: "紅鶴色 Flamingo", hex: "#e67c73" },
+  { id: "5", name: "香蕉色 Banana", hex: "#f6c026" },
+  { id: "6", name: "橘色 Tangerine", hex: "#f5511d" },
+  { id: "7", name: "孔雀色 Peacock", hex: "#039be5" },
+  { id: "8", name: "石墨色 Graphite", hex: "#616161" },
+  { id: "9", name: "藍莓色 Blueberry", hex: "#3f51b5" },
+  { id: "10", name: "羅勒色 Basil", hex: "#0b8043" },
+  { id: "11", name: "番茄色 Tomato", hex: "#d60000" },
+];
 
 /** An event whose title didn't match any active student name. */
 export interface UnmatchedEvent {
@@ -104,12 +123,21 @@ export interface AppSettings {
   calendarId: string;
   /** Default monthly venue rental fee, carried forward each month unless overridden. */
   defaultVenueRentalFee: number;
+  /** Google event colorId ("1"-"11") that marks an event as an actual class.
+   *  Events with any other color (or no color set) are ignored entirely —
+   *  not matched, not counted, not even flagged as unmatched — so personal
+   *  appointments on the same calendar don't get counted as classes just
+   *  because their title happens to contain a student's name. Empty string
+   *  means no color filter is configured yet: every event is considered,
+   *  same as before this feature existed. */
+  classEventColorId: string;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
   lowSessionThreshold: 2,
   calendarId: "primary",
   defaultVenueRentalFee: 0,
+  classEventColorId: "",
 };
 
 export const DEFAULT_SESSIONS_PER_PACKAGE = 10;

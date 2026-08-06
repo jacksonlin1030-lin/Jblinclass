@@ -2,9 +2,15 @@
 
 import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { GOOGLE_EVENT_COLORS } from "@/lib/types";
 
 interface SettingsResponse {
-  settings: { lowSessionThreshold: number; calendarId: string; defaultVenueRentalFee: number };
+  settings: {
+    lowSessionThreshold: number;
+    calendarId: string;
+    defaultVenueRentalFee: number;
+    classEventColorId: string;
+  };
   google: { connected: boolean; clientIdConfigured: boolean; redirectUri: string };
 }
 
@@ -26,6 +32,7 @@ function SettingsPageInner() {
   const [calendarId, setCalendarId] = useState("primary");
   const [lowSessionThreshold, setLowSessionThreshold] = useState(2);
   const [defaultVenueRentalFee, setDefaultVenueRentalFee] = useState(0);
+  const [classEventColorId, setClassEventColorId] = useState("");
 
   async function load() {
     setLoading(true);
@@ -35,6 +42,7 @@ function SettingsPageInner() {
     setCalendarId(json.settings.calendarId);
     setLowSessionThreshold(json.settings.lowSessionThreshold);
     setDefaultVenueRentalFee(json.settings.defaultVenueRentalFee);
+    setClassEventColorId(json.settings.classEventColorId);
     setLoading(false);
   }
 
@@ -65,6 +73,22 @@ function SettingsPageInner() {
       setMessage(`儲存失敗：${err.message}`);
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function selectClassColor(colorId: string) {
+    setClassEventColorId(colorId);
+    setMessage(null);
+    try {
+      const res = await fetch("/api/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ classEventColorId: colorId }),
+      });
+      if (!res.ok) throw new Error((await res.json()).error);
+      setMessage(colorId ? "已設定上課顏色，下次同步就會套用" : "已取消顏色篩選，會比對所有日曆事件");
+    } catch (err: any) {
+      setMessage(`儲存失敗：${err.message}`);
     }
   }
 
@@ -102,6 +126,44 @@ function SettingsPageInner() {
         <p className="text-xs text-slate-400">
           重新導向 URI：<code>{data.google.redirectUri}</code>（需與 Google Cloud Console 設定的一致）
         </p>
+      </section>
+
+      <section className="bg-white rounded-lg border border-slate-200 p-5 space-y-4">
+        <h2 className="text-lg font-semibold">上課事件顏色篩選</h2>
+        <p className="text-sm text-slate-600">
+          在 Google 日曆裡，把每一堂課的事件都設成同一個顏色，這裡選同一個顏色，同步時就只會比對這個顏色的事件——你排的其他行程（用別的顏色）不會被誤算成課程，就算標題剛好提到學生的名字也一樣。
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={() => selectClassColor("")}
+            className={`px-3 py-1.5 rounded-md text-xs font-medium border ${
+              classEventColorId === ""
+                ? "border-slate-900 bg-slate-900 text-white"
+                : "border-slate-300 text-slate-600"
+            }`}
+          >
+            不篩選（比對所有事件）
+          </button>
+          {GOOGLE_EVENT_COLORS.map((c) => (
+            <button
+              key={c.id}
+              onClick={() => selectClassColor(c.id)}
+              title={c.name}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium border ${
+                classEventColorId === c.id ? "border-slate-900 ring-2 ring-slate-900" : "border-slate-300"
+              }`}
+            >
+              <span className="w-3 h-3 rounded-full inline-block" style={{ backgroundColor: c.hex }} />
+              {c.name}
+            </button>
+          ))}
+        </div>
+        {classEventColorId && (
+          <p className="text-xs text-slate-400">
+            目前只會比對 Google 日曆上顏色為「
+            {GOOGLE_EVENT_COLORS.find((c) => c.id === classEventColorId)?.name}」的事件。
+          </p>
+        )}
       </section>
 
       <section className="bg-white rounded-lg border border-slate-200 p-5 space-y-4">
