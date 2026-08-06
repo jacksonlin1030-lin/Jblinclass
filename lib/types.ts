@@ -84,9 +84,9 @@ export interface MonthSnapshot {
   monthKey: string; // YYYY-MM
   sessions: MatchedSession[];
   syncedAt: string; // ISO datetime
-  /** This month's venue rental fee, overriding settings.defaultVenueRentalFee.
-   *  null means "use the default". */
-  venueFeeOverride: number | null;
+  /** This month's per-session venue rental fee, overriding
+   *  settings.defaultVenueFeePerSession. null means "use the default". */
+  venueFeePerSessionOverride: number | null;
 }
 
 export interface SyncRunSummary {
@@ -97,6 +97,15 @@ export interface SyncRunSummary {
   sessionCount: number;
   /** Of sessionCount, how many have a date <= today (i.e. already happened). */
   confirmedSessionCount: number;
+  /** How many calendar events existed in the month's date range, before the
+   *  color filter (if any) was applied — lets a "0 sessions" result be
+   *  diagnosed: were there simply no events, or did the color filter drop
+   *  everything (e.g. calendar events not recolored yet)? */
+  totalEventsInRange: number;
+  /** Of totalEventsInRange, how many passed the color filter and were
+   *  candidates for name-matching. Equals totalEventsInRange when no color
+   *  filter is configured. */
+  colorFilteredEventCount: number;
   unmatchedEvents: UnmatchedEvent[];
   multiMatchWarnings: { eventTitle: string; date: string; studentNames: string[] }[];
   error?: string;
@@ -105,15 +114,18 @@ export interface SyncRunSummary {
 /** Whole-month estimate across all active students, including classes already
  *  booked on the calendar for later this month. Revenue is attributed via the
  *  same FIFO package logic as per-student metrics, just run over the full
- *  month's sessions instead of stopping at today. */
+ *  month's sessions instead of stopping at today. Venue cost is a per-session
+ *  rate (e.g. "$380 per class") multiplied by the month's session count —
+ *  not a single flat monthly figure the coach has to total up themselves. */
 export interface MonthlyProjection {
   monthKey: string;
   sessionCount: number;
   confirmedSessionCount: number;
   estimatedRevenue: number;
-  venueFee: number;
+  venueFeePerSession: number;
   venueFeeIsOverride: boolean;
-  netIncome: number;
+  totalVenueFee: number; // venueFeePerSession * sessionCount
+  netIncome: number; // estimatedRevenue - totalVenueFee
 }
 
 export interface AppSettings {
@@ -121,8 +133,9 @@ export interface AppSettings {
   lowSessionThreshold: number;
   /** Which Google Calendar to read events from. */
   calendarId: string;
-  /** Default monthly venue rental fee, carried forward each month unless overridden. */
-  defaultVenueRentalFee: number;
+  /** Default per-session venue rental fee (e.g. $380/class), carried forward
+   *  each month unless overridden for a specific month. */
+  defaultVenueFeePerSession: number;
   /** Google event colorId ("1"-"11") that marks an event as an actual class.
    *  Events with any other color (or no color set) are ignored entirely —
    *  not matched, not counted, not even flagged as unmatched — so personal
@@ -136,7 +149,7 @@ export interface AppSettings {
 export const DEFAULT_SETTINGS: AppSettings = {
   lowSessionThreshold: 2,
   calendarId: "primary",
-  defaultVenueRentalFee: 0,
+  defaultVenueFeePerSession: 0,
   classEventColorId: "",
 };
 

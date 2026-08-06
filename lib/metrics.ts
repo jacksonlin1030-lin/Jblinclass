@@ -137,7 +137,9 @@ export function computeStudentMetrics(
  * correct even when a package purchased last month carries into this one.
  * Manual per-purchase overrides are intentionally NOT applied here — they
  * exist to correct a student's confirmed usage display, not to skew the
- * revenue projection.
+ * revenue projection. Venue cost is a per-session rate multiplied by the
+ * month's session count (e.g. "$380/class × 22 classes"), not a flat monthly
+ * figure — the coach doesn't have to total it up by hand.
  */
 export function computeMonthlyProjection(
   students: Student[],
@@ -145,7 +147,7 @@ export function computeMonthlyProjection(
   allSessions: MatchedSession[],
   monthKey: string,
   today: string,
-  venueFee: number,
+  venueFeePerSession: number,
   venueFeeIsOverride: boolean
 ): MonthlyProjection {
   const purchasesByStudent = groupByStudentSortedByPurchaseDate(purchases);
@@ -172,13 +174,16 @@ export function computeMonthlyProjection(
     }
   }
 
+  const totalVenueFee = venueFeePerSession * sessionCount;
+
   return {
     monthKey,
     sessionCount,
     confirmedSessionCount,
     estimatedRevenue,
-    venueFee,
+    venueFeePerSession,
     venueFeeIsOverride,
-    netIncome: estimatedRevenue - venueFee,
+    totalVenueFee,
+    netIncome: estimatedRevenue - totalVenueFee,
   };
 }

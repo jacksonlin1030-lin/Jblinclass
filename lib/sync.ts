@@ -56,7 +56,7 @@ export async function performSync(triggeredBy: "manual" | "cron"): Promise<SyncR
       syncedAt: runAt,
       // Preserve any venue-fee override already set for this month — a sync
       // run shouldn't reset it back to the default.
-      venueFeeOverride: existingSnapshot?.venueFeeOverride ?? null,
+      venueFeePerSessionOverride: existingSnapshot?.venueFeePerSessionOverride ?? null,
     };
     await saveMonthSnapshot(snapshot);
 
@@ -68,6 +68,8 @@ export async function performSync(triggeredBy: "manual" | "cron"): Promise<SyncR
       triggeredBy,
       sessionCount: snapshot.sessions.length,
       confirmedSessionCount,
+      totalEventsInRange: allEvents.length,
+      colorFilteredEventCount: events.length,
       unmatchedEvents: unmatched,
       multiMatchWarnings: multiMatch.map((m) => ({
         eventTitle: m.event.title,
@@ -84,6 +86,8 @@ export async function performSync(triggeredBy: "manual" | "cron"): Promise<SyncR
       triggeredBy,
       sessionCount: 0,
       confirmedSessionCount: 0,
+      totalEventsInRange: 0,
+      colorFilteredEventCount: 0,
       unmatchedEvents: [],
       multiMatchWarnings: [],
       error: err.message ?? "同步失敗",

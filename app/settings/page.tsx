@@ -8,7 +8,7 @@ interface SettingsResponse {
   settings: {
     lowSessionThreshold: number;
     calendarId: string;
-    defaultVenueRentalFee: number;
+    defaultVenueFeePerSession: number;
     classEventColorId: string;
   };
   google: { connected: boolean; clientIdConfigured: boolean; redirectUri: string };
@@ -31,7 +31,7 @@ function SettingsPageInner() {
 
   const [calendarId, setCalendarId] = useState("primary");
   const [lowSessionThreshold, setLowSessionThreshold] = useState(2);
-  const [defaultVenueRentalFee, setDefaultVenueRentalFee] = useState(0);
+  const [defaultVenueFeePerSession, setDefaultVenueFeePerSession] = useState(0);
   const [classEventColorId, setClassEventColorId] = useState("");
 
   async function load() {
@@ -41,7 +41,7 @@ function SettingsPageInner() {
     setData(json);
     setCalendarId(json.settings.calendarId);
     setLowSessionThreshold(json.settings.lowSessionThreshold);
-    setDefaultVenueRentalFee(json.settings.defaultVenueRentalFee);
+    setDefaultVenueFeePerSession(json.settings.defaultVenueFeePerSession);
     setClassEventColorId(json.settings.classEventColorId);
     setLoading(false);
   }
@@ -64,7 +64,7 @@ function SettingsPageInner() {
       const res = await fetch("/api/settings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ lowSessionThreshold, calendarId, defaultVenueRentalFee }),
+        body: JSON.stringify({ lowSessionThreshold, calendarId, defaultVenueFeePerSession }),
       });
       if (!res.ok) throw new Error((await res.json()).error);
       setMessage("設定已儲存");
@@ -188,12 +188,12 @@ function SettingsPageInner() {
             />
           </label>
           <label className="text-sm">
-            預設每月場地租借費用（每月自動延用，當月要改可在儀表板上直接編輯）
+            每堂課場地租借費用（例如每堂 380 元，會自動用「這個月堂數 × 這個金額」算出當月總場地費；每月自動延用，當月要改可在儀表板上直接編輯）
             <input
               type="number"
               min={0}
-              value={defaultVenueRentalFee}
-              onChange={(e) => setDefaultVenueRentalFee(Number(e.target.value))}
+              value={defaultVenueFeePerSession}
+              onChange={(e) => setDefaultVenueFeePerSession(Number(e.target.value))}
               className="mt-1 w-full rounded-md border border-slate-300 px-3 py-1.5"
             />
           </label>

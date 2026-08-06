@@ -97,13 +97,13 @@ export async function saveMonthSnapshot(snapshot: MonthSnapshot): Promise<void> 
   await kvSet(KEYS.month(snapshot.monthKey), snapshot);
 }
 
-/** Sets (or clears, with `fee: null`) this month's venue-fee override. Creates
- *  an empty snapshot if sync hasn't run for this month yet. */
+/** Sets (or clears, with `fee: null`) this month's per-session venue-fee
+ *  override. Creates an empty snapshot if sync hasn't run for this month yet. */
 export async function updateMonthVenueFee(monthKey: string, fee: number | null): Promise<MonthSnapshot> {
   const existing = await getMonthSnapshot(monthKey);
   const next: MonthSnapshot = existing
-    ? { ...existing, venueFeeOverride: fee }
-    : { monthKey, sessions: [], syncedAt: new Date().toISOString(), venueFeeOverride: fee };
+    ? { ...existing, venueFeePerSessionOverride: fee }
+    : { monthKey, sessions: [], syncedAt: new Date().toISOString(), venueFeePerSessionOverride: fee };
   await saveMonthSnapshot(next);
   return next;
 }

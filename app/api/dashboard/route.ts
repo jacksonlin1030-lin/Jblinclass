@@ -31,15 +31,15 @@ export async function GET() {
 
     const metrics = computeStudentMetrics(activeStudents, purchases, confirmedSessions, settings.lowSessionThreshold);
 
-    const venueFeeIsOverride = monthSnapshot?.venueFeeOverride != null;
-    const venueFee = monthSnapshot?.venueFeeOverride ?? settings.defaultVenueRentalFee;
+    const venueFeeIsOverride = monthSnapshot?.venueFeePerSessionOverride != null;
+    const venueFeePerSession = monthSnapshot?.venueFeePerSessionOverride ?? settings.defaultVenueFeePerSession;
     const projection = computeMonthlyProjection(
       activeStudents,
       purchases,
       allSessions,
       monthKey,
       today,
-      venueFee,
+      venueFeePerSession,
       venueFeeIsOverride
     );
 

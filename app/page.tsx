@@ -23,6 +23,8 @@ interface SyncRunSummary {
   triggeredBy: "manual" | "cron";
   sessionCount: number;
   confirmedSessionCount: number;
+  totalEventsInRange: number;
+  colorFilteredEventCount: number;
   unmatchedEvents: { eventId: string; title: string; date: string }[];
   multiMatchWarnings: { eventTitle: string; date: string; studentNames: string[] }[];
   error?: string;
@@ -33,8 +35,9 @@ interface MonthlyProjection {
   sessionCount: number;
   confirmedSessionCount: number;
   estimatedRevenue: number;
-  venueFee: number;
+  venueFeePerSession: number;
   venueFeeIsOverride: boolean;
+  totalVenueFee: number;
   netIncome: number;
 }
 
@@ -68,7 +71,7 @@ export default function DashboardPage() {
       setStudents(data.students);
       setLastRun(data.lastRun);
       setProjection(data.projection);
-      if (data.projection) setVenueFeeInput(String(data.projection.venueFee));
+      if (data.projection) setVenueFeeInput(String(data.projection.venueFeePerSession));
     } catch (err: any) {
       setError(err.message ?? "讀取儀表板資料失敗，請確認 /settings 中的設定");
     } finally {
@@ -154,11 +157,11 @@ export default function DashboardPage() {
             </div>
             <div>
               <div className="text-xs text-slate-500 flex items-center gap-1">
-                場地租借費用
+                每堂場地費
                 {!editingVenueFee && (
                   <button
                     onClick={() => {
-                      setVenueFeeInput(String(projection.venueFee));
+                      setVenueFeeInput(String(projection.venueFeePerSession));
                       setEditingVenueFee(true);
                     }}
                     className="text-blue-700 underline"
@@ -188,7 +191,7 @@ export default function DashboardPage() {
                 </div>
               ) : (
                 <div className="text-lg font-semibold text-slate-900">
-                  {fmt(projection.venueFee)}
+                  {fmt(projection.venueFeePerSession)}
                   {!projection.venueFeeIsOverride && <span className="text-xs font-normal text-slate-400"> (預設)</span>}
                 </div>
               )}
@@ -198,17 +201,34 @@ export default function DashboardPage() {
               <div className={`text-lg font-semibold ${projection.netIncome < 0 ? "text-red-700" : "text-green-700"}`}>
                 {fmt(projection.netIncome)}
               </div>
+              <div className="text-xs text-slate-400">
+                場地費共 {fmt(projection.totalVenueFee)}（{projection.sessionCount} 堂 ×{" "}
+                {fmt(projection.venueFeePerSession)}）
+              </div>
             </div>
           </div>
         </div>
       )}
 
       {lastRun && (
-        <div className="rounded-md bg-slate-100 text-slate-600 px-4 py-2 text-xs">
-          {lastRun.monthKey} 月同步於 {fmtTime(lastRun.runAt)}（
-          {lastRun.triggeredBy === "cron" ? "自動排程" : "手動"}），本月共 {lastRun.sessionCount} 堂課（已上{" "}
-          {lastRun.confirmedSessionCount} 堂）
-          {lastRun.error && <span className="text-red-600 ml-2">上次執行失敗：{lastRun.error}</span>}
+        <div className="rounded-md bg-slate-100 text-slate-600 px-4 py-2 text-xs space-y-0.5">
+          <div>
+            {lastRun.monthKey} 月同步於 {fmtTime(lastRun.runAt)}（
+            {lastRun.triggeredBy === "cron" ? "自動排程" : "手動"}），本月共 {lastRun.sessionCount} 堂課（已上{" "}
+            {lastRun.confirmedSessionCount} 堂）
+          </div>
+          {lastRun.totalEventsInRange !== lastRun.colorFilteredEventCount && (
+            <div>
+              本月日曆上共有 {lastRun.totalEventsInRange} 個事件，其中 {lastRun.colorFilteredEventCount} 個符合「設定」頁選的上課顏色（其餘因顏色不符已略過）。
+              {lastRun.colorFilteredEventCount === 0 && lastRun.totalEventsInRange > 0 && (
+                <span className="text-amber-700">
+                  {" "}
+                  如果這是非預期的 0，請確認 Google 日曆上的課程事件都已改成設定頁選的顏色。
+                </span>
+              )}
+            </div>
+          )}
+          {lastRun.error && <div className="text-red-600">上次執行失敗：{lastRun.error}</div>}
         </div>
       )}
 

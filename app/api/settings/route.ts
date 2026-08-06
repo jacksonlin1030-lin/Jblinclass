@@ -24,12 +24,13 @@ export async function POST(req: NextRequest) {
     const patch: {
       lowSessionThreshold?: number;
       calendarId?: string;
-      defaultVenueRentalFee?: number;
+      defaultVenueFeePerSession?: number;
       classEventColorId?: string;
     } = {};
     if (typeof body.lowSessionThreshold === "number") patch.lowSessionThreshold = body.lowSessionThreshold;
     if (typeof body.calendarId === "string") patch.calendarId = body.calendarId;
-    if (typeof body.defaultVenueRentalFee === "number") patch.defaultVenueRentalFee = body.defaultVenueRentalFee;
+    if (typeof body.defaultVenueFeePerSession === "number")
+      patch.defaultVenueFeePerSession = body.defaultVenueFeePerSession;
     if (typeof body.classEventColorId === "string") patch.classEventColorId = body.classEventColorId;
     const settings = await saveSettings(patch);
     return NextResponse.json({ settings });
