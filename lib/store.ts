@@ -9,6 +9,8 @@ import {
   Purchase,
   Student,
   SyncRunSummary,
+  Transaction,
+  TransactionType,
 } from "./types";
 
 const KEYS = {
@@ -18,6 +20,7 @@ const KEYS = {
   settings: "settings",
   lastRun: "sync:lastRun",
   month: (monthKey: string) => `sync:month:${monthKey}`,
+  transactions: "expense:transactions",
 } as const;
 
 // ---------- Students ----------
@@ -143,6 +146,50 @@ export async function getGoogleTokens(): Promise<GoogleTokens | null> {
 
 export async function saveGoogleTokens(tokens: GoogleTokens): Promise<void> {
   await kvSet(KEYS.googleTokens, tokens);
+}
+
+// ---------- Personal expense/income transactions ----------
+
+export async function getTransactions(): Promise<Transaction[]> {
+  return (await kvGet<Transaction[]>(KEYS.transactions)) ?? [];
+}
+
+export async function addTransaction(data: {
+  type: TransactionType;
+  date: string;
+  amount: number;
+  categoryId: string;
+  note?: string;
+}): Promise<Transaction> {
+  const transactions = await getTransactions();
+  const transaction: Transaction = {
+    id: randomUUID(),
+    type: data.type,
+    date: data.date,
+    amount: data.amount,
+    categoryId: data.categoryId,
+    note: data.note ?? "",
+  };
+  transactions.push(transaction);
+  await kvSet(KEYS.transactions, transactions);
+  return transaction;
+}
+
+export async function updateTransaction(
+  id: string,
+  patch: Partial<Pick<Transaction, "type" | "date" | "amount" | "categoryId" | "note">>
+): Promise<void> {
+  const transactions = await getTransactions();
+  const next = transactions.map((t) => (t.id === id ? { ...t, ...patch } : t));
+  await kvSet(KEYS.transactions, next);
+}
+
+export async function deleteTransaction(id: string): Promise<void> {
+  const transactions = await getTransactions();
+  await kvSet(
+    KEYS.transactions,
+    transactions.filter((t) => t.id !== id)
+  );
 }
 
 // ---------- Settings ----------
