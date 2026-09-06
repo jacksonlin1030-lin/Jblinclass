@@ -155,6 +155,85 @@ export const DEFAULT_SETTINGS: AppSettings = {
 
 export const DEFAULT_SESSIONS_PER_PACKAGE = 10;
 
+// ---------- Personal expense/income tracking ----------
+
+export type TransactionType = "income" | "expense";
+
+/** A manually-entered income or expense record. Teaching income is NOT
+ *  stored as a Transaction — it's derived live from paid course-package
+ *  purchases (see lib/expenseMetrics.ts) so it never needs re-entering and
+ *  can't drift out of sync with 學生管理. */
+export interface Transaction {
+  id: string;
+  type: TransactionType;
+  date: string; // ISO date
+  amount: number;
+  categoryId: string;
+  note: string;
+}
+
+export interface TransactionCategory {
+  id: string;
+  name: string;
+  type: TransactionType;
+  /** Groups categories under a heading in the picker (e.g. "生活", "興趣", "教練業務"). */
+  group: string;
+}
+
+/** Reserved categoryId for the auto-derived teaching-income entries — never
+ *  offered as a choice in the manual add-transaction form. */
+export const TEACHING_INCOME_CATEGORY_ID = "teaching-income";
+
+export const EXPENSE_CATEGORIES: TransactionCategory[] = [
+  { id: "food", name: "餐飲", type: "expense", group: "生活" },
+  { id: "transport", name: "交通", type: "expense", group: "生活" },
+  { id: "rent", name: "房租/房貸", type: "expense", group: "生活" },
+  { id: "daily", name: "日用品", type: "expense", group: "生活" },
+  { id: "medical", name: "醫療", type: "expense", group: "生活" },
+  { id: "life-other", name: "生活其他", type: "expense", group: "生活" },
+  { id: "surf", name: "衝浪", type: "expense", group: "興趣/裝備" },
+  { id: "ski", name: "滑雪", type: "expense", group: "興趣/裝備" },
+  { id: "basketball", name: "籃球", type: "expense", group: "興趣/裝備" },
+  { id: "entertainment", name: "影音娛樂", type: "expense", group: "興趣/裝備" },
+  { id: "travel", name: "旅遊", type: "expense", group: "興趣/裝備" },
+  { id: "hobby-other", name: "興趣其他", type: "expense", group: "興趣/裝備" },
+  { id: "venue", name: "場地費", type: "expense", group: "教練業務" },
+  { id: "gear", name: "教練裝備/器材", type: "expense", group: "教練業務" },
+  { id: "media-tool", name: "自媒體工具/訂閱", type: "expense", group: "教練業務" },
+  { id: "biz-other", name: "業務其他", type: "expense", group: "教練業務" },
+];
+
+/** Kept deliberately short: income breakdown by source (教課／自媒體／滑雪教學…)
+ *  wasn't asked for yet, so a single catch-all category plus a free-text
+ *  note is enough — write a keyword in the note (e.g. 「業配」) if you might
+ *  want to filter for it later. */
+export const INCOME_CATEGORIES: TransactionCategory[] = [
+  { id: "other-income", name: "其他收入", type: "income", group: "收入" },
+];
+
+export function findCategory(categoryId: string, type: TransactionType): TransactionCategory | undefined {
+  return (type === "income" ? INCOME_CATEGORIES : EXPENSE_CATEGORIES).find((c) => c.id === categoryId);
+}
+
+/** One row in the merged income/expense ledger shown on the 記帳 page —
+ *  either a stored Transaction (`source: "manual"`) or a live-derived
+ *  teaching-income row (`source: "teaching-sync"`) built from a paid
+ *  purchase. Teaching-sync rows have a stable synthetic id
+ *  (`teaching:<purchaseId>`) and can only be edited via 學生管理. */
+export interface LedgerEntry extends Transaction {
+  source: "manual" | "teaching-sync";
+  studentId?: string;
+  studentName?: string;
+}
+
+export interface MonthlyLedgerSummary {
+  monthKey: string;
+  totalIncome: number;
+  totalExpense: number;
+  net: number;
+  byCategory: { categoryId: string; type: TransactionType; amount: number }[];
+}
+
 /** Per-student computed metrics for the dashboard table. */
 export interface StudentMetrics {
   studentId: string;
